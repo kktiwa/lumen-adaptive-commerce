@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "lumen-adaptive-commerce"
+version = "0.1.0"
+description = "AI-powered adaptive commerce platform with personalization engine, conversational agents, and multi-agent shopping orchestration."
+authors = ["Kunal Tiwary"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+langchain = "*"
+langgraph = "*"
+langchain-openai = "*"
+python-dotenv = "^1.0.0"
+gradio = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
