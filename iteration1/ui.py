@@ -17,8 +17,8 @@ def build_ui(run_fn: Callable):
                 product_price = gr.Number(label="Price")
                 product_features = gr.Textbox(label="Features (comma-separated)")
 
-        btn = gr.Button("Generate")
-        output = gr.HTML(label="Adaptive Product Details")
+        btn = gr.Button("Search")
+        output = gr.HTML(label="Adaptive Product Search Results")
 
         btn.click(
             fn=run_fn,
