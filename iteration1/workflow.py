@@ -1,12 +1,14 @@
-from typing import Dict, Any
+from typing import TypedDict, Any
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 
 from common.config import settings
 from .prompts import adaptive_product_prompt
 
-class SearchState(Dict[str, Any]):
-    pass
+class SearchState(TypedDict):
+    user_profile: dict
+    product: dict
+    generated: str
 
 llm = ChatOpenAI(
     model="gpt-4o-mini",
