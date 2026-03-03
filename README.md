@@ -19,3 +19,16 @@ Built with:
 
 ```bash
 poetry install
+```
+
+### Running Iterations
+
+#### Iteration 1: Adaptive Product Search
+
+Run the adaptive product search interface:
+
+```bash
+poetry run python -m iteration1.app
+```
+
+This launches a Gradio UI where you can input user preferences and product details to generate adaptive product descriptions.
