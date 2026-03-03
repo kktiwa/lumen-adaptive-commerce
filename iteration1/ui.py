@@ -18,7 +18,7 @@ def build_ui(run_fn: Callable):
                 product_features = gr.Textbox(label="Features (comma-separated)")
 
         btn = gr.Button("Generate")
-        output = gr.JSON(label="Adaptive Output")
+        output = gr.HTML(label="Adaptive Product Details")
 
         btn.click(
             fn=run_fn,
