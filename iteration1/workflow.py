@@ -2,8 +2,10 @@ from typing import TypedDict, Any
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 
-from common.config import settings
+from common.config import initialize_arize_tracing, settings
 from .prompts import adaptive_product_prompt
+# Initialize Arize tracing BEFORE importing workflow
+initialize_arize_tracing(settings)
 
 class SearchState(TypedDict):
     user_profile: dict

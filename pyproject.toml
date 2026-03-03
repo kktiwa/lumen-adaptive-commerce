@@ -5,12 +5,14 @@ description = "AI-powered adaptive commerce platform with personalization engine
 authors = ["Kunal Tiwary"]
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = ">=3.10,<3.15"
 langchain = "*"
 langgraph = "*"
 langchain-openai = "*"
 python-dotenv = "^1.0.0"
 gradio = "*"
+arize = "*"
+openinference-instrumentation-langchain = "*"
 
 [build-system]
 requires = ["poetry-core"]

@@ -1,3 +1,8 @@
+from common.config import settings, initialize_arize_tracing
+
+# Initialize Arize tracing BEFORE importing workflow
+initialize_arize_tracing(settings)
+
 from .workflow import graph
 from .ui import build_ui
 from .product_types import UserProfile, Product
