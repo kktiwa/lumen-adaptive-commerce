@@ -3,12 +3,13 @@ from typing import TypedDict, List, Optional
 from datetime import datetime
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
+import json
 
 from common.config import settings, initialize_arize_tracing
 from .conversation_types import ConversationState, ConversationMessage, ConversationContext
 from .user_preferences import load_user_preferences
 from .chat_prompts import get_system_prompt, get_recommendation_prompt
-from .product_database import search_products
+from .product_database import get_product_db
 
 # Initialize Arize tracing
 initialize_arize_tracing(settings)
@@ -34,47 +35,64 @@ def process_user_message(state: ConversationState) -> ConversationState:
     return state
 
 def extract_context(state: ConversationState) -> ConversationState:
-    """Extract conversation context from messages"""
-    # For now, we'll do simple extraction based on keywords
-    # In production, this could use a separate LLM call
+    """Extract conversation context using LLM for semantic understanding"""
     
-    message = state["current_message"].lower()
-    context = state["conversation_context"]
+    # Build conversation history for context
+    history_text = "\n".join([
+        f"{msg['role'].upper()}: {msg['content']}"
+        for msg in state["conversation_history"][-5:]  # Last 5 messages
+    ])
     
-    # Extract occasion
-    occasion_keywords = {
-        "birthday": "birthday party",
-        "party": "birthday party",
-        "camping": "camping trip",
-        "outdoor": "outdoor activity",
-        "rainy": "indoor activity"
-    }
+    # Create extraction prompt
+    extraction_prompt = f"""
+    Based on the user's message and conversation history, extract the following information:
     
-    for keyword, occasion in occasion_keywords.items():
-        if keyword in message:
-            context["occasion"] = occasion
-            break
+    Conversation:
+    {history_text}
+    Current message: {state['current_message']}
     
-    # Extract age range
-    age_keywords = {
-        "5": "5-8",
-        "6": "5-8", 
-        "7": "5-8",
-        "8": "5-10",
-        "9": "5-10",
-        "10": "5-12",
-    }
+    Extract and return as JSON:
+    {{
+        "occasion": "what is the user looking to do/celebrate? (e.g., 'birthday party', 'camping trip', 'lazy afternoon', 'outdoor adventure')",
+        "age_group": "what is the age of the target child/children? (e.g., '5-7 years', '8-10 years', 'mixed ages 5-12')",
+        "quantity_needed": "how many people or items? (integer or null if not specified)",
+        "specific_needs": ["list of specific requirements mentioned (e.g., 'educational', 'eco-friendly', 'budget-friendly']"],
+        "clarifications_needed": ["list of questions we still need to ask to narrow down, or empty list if we have enough info"]
+    }}
     
-    for keyword, age in age_keywords.items():
-        if keyword in message:
-            context["age_group"] = age
-            break
+    Return ONLY valid JSON, no other text.
+    """
     
-    # Extract quantity if mentioned
-    if "kids" in message or "children" in message:
-        context["quantity_needed"] = 1  # Will be updated later
+    try:
+        response = llm.invoke([
+            {"role": "system", "content": "You are an expert at understanding customer needs from natural language. Extract structured information and return valid JSON."},
+            {"role": "user", "content": extraction_prompt}
+        ])
+        
+        # Parse the response
+        response_text = response.content.strip()
+        # Clean up markdown code blocks if present
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+        
+        context_data = json.loads(response_text)
+        
+        # Update context
+        context = state["conversation_context"]
+        context["occasion"] = context_data.get("occasion")
+        context["age_group"] = context_data.get("age_group")
+        context["quantity_needed"] = context_data.get("quantity_needed")
+        context["specific_needs"] = context_data.get("specific_needs", [])
+        context["clarifications_needed"] = context_data.get("clarifications_needed", [])
+        
+        state["conversation_context"] = context
+        
+    except json.JSONDecodeError as e:
+        # If JSON parsing fails, continue with existing context
+        print(f"Error parsing context extraction: {e}")
     
-    state["conversation_context"] = context
     return state
 
 def generate_response(state: ConversationState) -> ConversationState:
@@ -119,12 +137,13 @@ def generate_response(state: ConversationState) -> ConversationState:
     return state
 
 def get_recommendations(state: ConversationState) -> ConversationState:
-    """Get product recommendations based on conversation context"""
+    """Get product recommendations using semantic search"""
     
     if not state["conversation_complete"]:
         return state
     
     context = state["conversation_context"]
+    db = get_product_db()
     
     # Extract max price from budget
     budget = state["user_preferences"]["budget"]
@@ -136,12 +155,30 @@ def get_recommendations(state: ConversationState) -> ConversationState:
     }
     max_price = max_price_map.get(budget, 100)
     
-    # Search for products
-    products = search_products(
-        occasion=context.get("occasion"),
-        age_range=context.get("age_group"),
+    # Build semantic search query from context
+    search_query_parts = []
+    
+    if context.get("occasion"):
+        search_query_parts.append(f"for {context['occasion']}")
+    
+    if context.get("age_group"):
+        search_query_parts.append(f"for children {context['age_group']}")
+    
+    if context.get("specific_needs"):
+        needs = context.get("specific_needs", [])
+        if needs:
+            search_query_parts.append(f"that are {', '.join(needs)}")
+    
+    # Build the semantic search query
+    search_query = "Product " + " ".join(search_query_parts) if search_query_parts else "Product for children"
+    
+    # Search using similarity search
+    products = db.similarity_search(
+        query=search_query,
         max_price=max_price,
-        educational=state["user_preferences"]["preferences"].get("educational", True)
+        educational=state["user_preferences"]["preferences"].get("educational", True),
+        eco_friendly=state["user_preferences"]["preferences"].get("eco_friendly", False),
+        top_k=4
     )
     
     state["product_recommendations"] = products
