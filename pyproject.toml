@@ -3,6 +3,14 @@ name = "lumen-adaptive-commerce"
 version = "0.1.0"
 description = "AI-powered adaptive commerce platform with personalization engine, conversational agents, and multi-agent shopping orchestration."
 authors = ["Kunal Tiwary"]
+packages = [
+    {include = "common"},
+    {include = "iteration1"},
+    {include = "iteration2"},
+]
+
+[tool.poetry.scripts]
+iteration2 = "iteration2.app:main"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.14"
