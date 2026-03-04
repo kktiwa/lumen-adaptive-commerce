@@ -1,0 +1,35 @@
+{
+  "header": "Unleash Your Game with Premium Tennis Balls",
+  "subheader": "Elevate Your Performance on the Court",
+  "tagline": "Bold Moves, Bold Results!",
+  "summary": "Experience the perfect blend of durability and playability with our premium tennis balls. Designed for serious athletes who demand bold performance, these tennis balls will take your game to the next level. Whether you're practicing serves or competing in tournaments, trust our high-quality balls to deliver consistent bounce and speed.",
+  "visual_cues": {
+    "image": "https://example.com/tennis-balls-image.jpg",
+    "colors": [
+      "#FF5733",
+      "#C70039",
+      "#900C3F"
+    ],
+    "icons": [
+      "🏆",
+      "🎾",
+      "🔥"
+    ]
+  },
+  "CTA": "Shop Now and Ace Your Game!",
+  "metatags": [
+    "Tennis",
+    "Sports Equipment",
+    "Premium Tennis Balls",
+    "Performance Tennis Balls"
+  ],
+  "social_proof": {
+    "review_rating": 4.8,
+    "number_of_reviews": 250,
+    "testimonials": [
+      "These tennis balls changed my game! - Alex J.",
+      "Outstanding quality and durability! - Jamie T."
+    ]
+  },
+  "hyperlink_label": "Discover More Tennis Gear"
+}
