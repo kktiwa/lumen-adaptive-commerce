@@ -57,6 +57,46 @@ def json_to_html(data: dict) -> str:
     else:
         return f"<p>{str(data)}</p>"
 
+def eval_report_to_html(report: dict) -> str:
+    """Render eval report as HTML summary."""
+    if not report or report.get("error"):
+        return ""
+    avg = report.get("overall_average", 0)
+    n = report.get("sections_evaluated", 0)
+    results = report.get("results", [])
+    rows = []
+    for r in results:
+        if r.get("error"):
+            rows.append(
+                f"<tr><td>{r.get('section_label', '?')}</td><td>Error</td>"
+                f"<td>—</td><td>—</td><td>—</td></tr>"
+            )
+        else:
+            score = r.get("overall", 0)
+            color = "#22c55e" if score >= 4 else "#eab308" if score >= 3 else "#ef4444"
+            strengths = r.get("strengths") or "—"
+            weaknesses = r.get("weaknesses") or "—"
+            sug = r.get("suggestion") or "—"
+            rows.append(
+                f"<tr><td>{r.get('section_label', '?')}</td>"
+                f"<td style='color:{color};font-weight:600'>{score:.1f}/5</td>"
+                f"<td>{strengths}</td><td>{weaknesses}</td><td>{sug}</td></tr>"
+            )
+    table = "".join(rows)
+    return f"""
+    <div style="margin-top:24px;padding:16px;background:#f8fafc;border-radius:8px;font-size:14px">
+        <h3 style="margin:0 0 12px 0">📊 Evaluation Report</h3>
+        <p style="margin:0 0 12px 0;color:#64748b">
+            Overall: <strong style="color:#0f172a">{avg}/5</strong> across {n} sections
+        </p>
+        <table style="width:100%;border-collapse:collapse">
+            <thead><tr><th style="text-align:left">Section</th><th>Score</th><th style="text-align:left">Strengths</th><th style="text-align:left">Weaknesses</th><th style="text-align:left">Suggestion</th></tr></thead>
+            <tbody>{table}</tbody>
+        </table>
+    </div>
+    """
+
+
 def run_engine(
     user_budget, user_style, user_interest,
     product_name, product_category, product_price, product_features
@@ -93,17 +133,22 @@ def run_engine(
     if json_match:
         generated_text = json_match.group(1)
     
-    # Try to parse as JSON
+    # Build product description HTML
     try:
         parsed = json.loads(generated_text)
         if isinstance(parsed, dict):
-            # Convert to HTML
-            return json_to_html(parsed)
+            html = json_to_html(parsed)
         else:
-            return json_to_html({"result": str(parsed)})
+            html = json_to_html({"result": str(parsed)})
     except json.JSONDecodeError:
-        # Return as-is with the raw text
-        return json_to_html({"description": generated_text})
+        html = json_to_html({"description": generated_text})
+
+    # Append eval report if available
+    eval_report = final.get("eval_report")
+    if eval_report:
+        html += eval_report_to_html(eval_report)
+
+    return html
 
 if __name__ == "__main__":
     ui = build_ui(run_engine)

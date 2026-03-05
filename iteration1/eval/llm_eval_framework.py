@@ -298,12 +298,14 @@ class EvalResult:
     error: Optional[str] = None
 
 
-def eval_section(client: OpenAI, section: dict, text: str) -> EvalResult:
+def eval_section(
+    client: OpenAI, section: dict, text: str, model: str = "gpt-5-mini"
+) -> EvalResult:
     result = EvalResult(section_key=section["key"], section_label=section["label"])
     raw = ""
     try:
         response = client.chat.completions.create(
-            model="gpt-5-mini",
+            model=model,
             max_completion_tokens=1000,
             messages=[
                 {
@@ -330,11 +332,19 @@ def eval_section(client: OpenAI, section: dict, text: str) -> EvalResult:
         if not raw:
             result.error = "API returned empty content (after stripping markdown)"
             return result
-        # Try to extract JSON if wrapped in text (e.g. "Here's the evaluation: {...}")
+        # Extract first complete JSON object (handles "Extra data" when LLM returns multiple objects)
         first_brace = raw.find("{")
-        last_brace = raw.rfind("}")
-        if first_brace >= 0 and last_brace > first_brace:
-            raw = raw[first_brace : last_brace + 1]
+        if first_brace >= 0:
+            depth, end = 0, first_brace
+            for i, c in enumerate(raw[first_brace:], first_brace):
+                if c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = i
+                        break
+            raw = raw[first_brace : end + 1]
         parsed = json.loads(raw)
         result.scores = parsed.get("scores", {})
         result.overall = float(parsed.get("overall", 0))
@@ -350,6 +360,98 @@ def eval_section(client: OpenAI, section: dict, text: str) -> EvalResult:
         else:
             result.error = f"Unexpected error: {e}"
     return result
+
+
+# ─────────────────────────────────────────────
+# PROGRAMMATIC API (for workflow integration)
+# ─────────────────────────────────────────────
+
+# Key mapping: prompt/LLM labels -> eval section keys
+KEY_ALIASES = {
+    "Header": "header",
+    "Subheader": "subheader",
+    "Tagline": "tagline",
+    "Summary": "summary",
+    "Visual cues": "visual_cues",
+    "CTA": "cta",
+    "Metatags": "metatags",
+    "Social proof": "social_proof",
+    "Hyperlink label": "hyperlink_label",
+}
+
+
+def normalize_section_inputs(parsed: dict) -> dict:
+    """Map LLM output keys (mixed case/labels) to eval section keys."""
+    valid_keys = {s["key"] for s in SECTIONS}
+    out = {}
+    for k, v in parsed.items():
+        if not v:
+            continue
+        text = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+        key = (
+            KEY_ALIASES.get(k)
+            or (k.lower().replace(" ", "_") if isinstance(k, str) else str(k))
+        )
+        if key in valid_keys:
+            out[key] = text
+    return out
+
+
+def evaluate_sections(
+    inputs: dict,
+    api_key: Optional[str] = None,
+    model: str = "gpt-5-mini",
+    parallel: bool = True,
+) -> dict:
+    """
+    Programmatic evaluation of section inputs. Returns a serializable report dict.
+
+    Args:
+        inputs: Dict mapping section keys to text (e.g. {"header": "...", "summary": "..."}).
+                Keys can be normalized via normalize_section_inputs() from parsed LLM JSON.
+        api_key: OpenAI API key (or set OPENAI_API_KEY env var).
+        model: Model for LLM-as-judge.
+        parallel: Whether to evaluate sections in parallel.
+
+    Returns:
+        Dict with keys: timestamp, sections_evaluated, overall_average, results (list of EvalResult as dicts).
+    """
+    api_key = api_key or os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OpenAI API key required for evaluation")
+    client = OpenAI(api_key=api_key)
+    section_map = {s["key"]: s for s in SECTIONS}
+    filled = {k: v for k, v in inputs.items() if v and str(v).strip()}
+    filled = {k: v for k, v in filled.items() if k in section_map}
+    if not filled:
+        return {
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "sections_evaluated": 0,
+            "overall_average": 0.0,
+            "results": [],
+        }
+    results: list[EvalResult] = []
+    if parallel:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+
+            def eval_one(item):
+                key, text = item
+                return eval_section(client, section_map[key], str(text), model=model)
+
+            results = list(executor.map(eval_one, filled.items()))
+    else:
+        for key, text in filled.items():
+            results.append(
+                eval_section(client, section_map[key], str(text), model=model)
+            )
+    scored = [r for r in results if not r.error]
+    avg = sum(r.overall for r in scored) / len(scored) if scored else 0.0
+    return {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "sections_evaluated": len(results),
+        "overall_average": round(avg, 2),
+        "results": [asdict(r) for r in results],
+    }
 
 
 # ─────────────────────────────────────────────

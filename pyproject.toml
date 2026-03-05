@@ -25,6 +25,7 @@ arize-phoenix-otel = "*"
 arize-otel = "*"
 chromadb = "^0.4.0"
 langchain-chroma = "*"
+numpy = "<2"
 
 [build-system]
 requires = ["poetry-core"]
