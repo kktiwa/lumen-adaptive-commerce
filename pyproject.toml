@@ -7,10 +7,12 @@ packages = [
     {include = "common"},
     {include = "iteration1"},
     {include = "iteration2"},
+    {include = "iteration3"},
 ]
 
 [tool.poetry.scripts]
 iteration2 = "iteration2.app:main"
+iteration3 = "iteration3.app:main"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.14"
