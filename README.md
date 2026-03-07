@@ -239,10 +239,225 @@ All LLM calls and agent decisions are automatically traced through Arize for:
 
 ---
 
+## Iteration 3: Autonomous Agentic E-Commerce Application
+
+### Overview
+
+Iteration 3 implements a fully autonomous agentic application that guides customers through an end-to-end shopping experience using an AI agent powered by LLMs and LangGraph. The agent converses naturally with customers, understands their needs, recommends products, handles checkout, processes payments, and sends order confirmations.
+
+### Architecture
+
+#### Core Components
+
+```
+iteration3/
+├── agentic_types.py              # Type definitions for agentic state & entities
+├── user_management.py            # User profiles, addresses, payment methods
+├── order_management.py           # Order creation and tracking
+├── payment_processor.py          # Payment processing (mock)
+├── email_service.py              # Order confirmation emails
+├── product_database.py           # Product catalog with vector search
+├── vector_search.py              # ChromaDB semantic search (NEW)
+├── tools.py                      # Agent tools/actions
+├── agentic_prompts.py           # System prompts & message formatting
+├── agentic_workflow.py          # LangGraph workflow (core logic)
+├── agentic_ui.py                # Gradio UI
+└── app.py                       # Entry point
+```
+
+#### Workflow Flow
+
+The autonomous agent operates in a state machine with the following path:
+
+```
+1. Process User Input
+   └─> Extract Context from Conversation
+       └─> Agent Reasoning (decide next action)
+           ├─> Gather Information (if needs clarification)
+           │   └─> Continue conversation
+           ├─> Recommend Product (if have enough context)
+           │   └─> Display recommendation
+           ├─> Summarize Recommendation (if product selected)
+           │   ├─> Create order
+           │   └─> Display order with alternatives
+           └─> Process Payment (if user confirmed)
+               ├─> SUCCESS → Complete Order → Send Email
+               └─> FAILED → Show error, ask retry
+```
+
+#### Key Design Patterns
+
+**1. State Management with LangGraph**
+- Centralized `AgenticState` TypedDict manages all conversation and order data
+- Each workflow node is a pure function that transforms state
+- Stateless design enables easy debugging and testing
+
+**2. Service Layer Architecture**
+- **UserManager**: Handles user profiles, shipping addresses, payment methods
+- **OrderManager**: Creates and tracks orders with pricing calculations
+- **PaymentProcessor**: Processes payments with transaction logging
+- **EmailService**: Sends confirmations and shipping notifications
+- **VectorSearch**: ChromaDB-powered semantic product search with embeddings
+
+**3. LLM-driven Agent Reasoning**
+- Multi-step reasoning process with conversation context extraction
+- Agent decides which action to take based on conversation progress
+- Natural language prompts guide the LLM's decision-making
+
+**4. Semantic Product Discovery**
+- ChromaDB with OpenAI embeddings for intelligent product matching
+- Natural language queries instead of rigid field matching
+- Relevance ranking by semantic similarity
+- Fast filtering by budget, age group, educational, eco-friendly, etc.
+
+### Key Features
+
+✅ **Natural Conversation Flow**
+- Agent asks clarifying questions about occasion, age group, budget, needs
+- Extracts context incrementally from multi-turn conversations
+- Personalized recommendations based on extracted context
+- Stops asking follow-ups once user provides category, age, and budget
+
+✅ **Semantic Product Recommendation**
+- Intelligent semantic search using OpenAI embeddings
+- Products ranked by relevance, not just field matches
+- Supports filtering by price, age range, occasion, educational value, eco-friendliness
+- Explains why each product is a good match
+
+✅ **Intelligent Checkout**
+- Shows default shipping address and payment method
+- Offers alternatives if multiple are saved
+- Requires explicit user confirmation before payment
+
+✅ **Payment Processing**
+- Mock payment processor with realistic success/failure simulation
+- Transaction logging for auditing
+- Error handling and user-friendly error messages
+- Refund support (for future implementation)
+
+✅ **Order Management**
+- Automatic order creation with calculated totals (subtotal + tax + shipping)
+- Order status tracking (pending → processing → completed)
+- Order summaries with all details
+
+✅ **Email Notifications**
+- Automated order confirmation emails
+- Shipping notifications (can be sent after shipment)
+- Mock email service with logging
+
+### Best Practices Implemented
+
+✅ **Separation of Concerns** - Each module has single responsibility
+✅ **Type Safety** - Full TypedDict usage for all data structures
+✅ **Error Handling** - Graceful error handling with user-friendly messages
+✅ **Stateless Functions** - Pure functions enable easy debugging and testing
+✅ **Extensibility** - Easy to add new products, payment methods, or enhancementss
+✅ **Observability** - Comprehensive logging and Arize tracing integration
+
+### Running Iteration 3
+
+```bash
+# Using poetry script
+poetry run iteration3
+
+# Or direct Python
+python -m iteration3.app
+```
+
+The UI will launch in your browser at the Gradio URL (typically `http://localhost:7860`).
+
+### Type System
+
+**Core AgenticState**
+```python
+AgenticState(TypedDict):
+    user_profile: Optional[UserProfile]
+    conversation_history: List[ConversationMessage]
+    conversation_context: ConversationContext
+    agent_steps: List[AgentStep]
+    next_action: AgentActionType
+    selected_product: Optional[Product]
+    current_order: Optional[Order]
+    payment_successful: bool
+    order_completed: bool
+    email_sent: bool
+```
+
+### Sample Conversation
+
+```
+User: I need a birthday gift for my 6-year-old, budget under $50, for outdoor activities
+
+Agent: Perfect! I found some great outdoor toys for that age and budget.
+       I'd like to recommend the "Outdoor Scavenger Hunt Pack"
+       Price: $30 | Great for groups | Educational | Eco-friendly
+       
+       Would this work for you?
+
+User: Yes, let's get it!
+
+Agent: Great! I'll create your order:
+       Product: Outdoor Scavenger Hunt Pack ($30)
+       Shipping to: 123 Main Street, San Francisco, CA
+       Payment: Visa ending in 4242
+       Total: $38.40 (includes $2.40 tax + $6 shipping)
+       
+       Should I proceed?
+
+User: Yes, please
+
+Agent: ✓ Payment successful! Order confirmation sent to alice@example.com
+```
+
+### Data Structures
+
+**UserProfile**
+```python
+{
+    "user_id": "user_001",
+    "name": "Alice Johnson",
+    "email": "alice@example.com",
+    "shipping_addresses": [ShippingAddress],
+    "payment_methods": [PaymentMethod],
+}
+```
+
+**Order**
+```python
+{
+    "id": "order_abc123",
+    "user_id": "user_001",
+    "items": [{
+        "product_id": "prod_003",
+        "product_name": "Outdoor Scavenger Hunt Pack",
+        "quantity": 1,
+        "unit_price": 30.00,
+    }],
+    "total_amount": 38.40,  # subtotal + tax + shipping
+    "status": "completed",
+}
+```
+
+### Extension Points
+
+1. **Real Payment Processing** - Replace mock with Stripe/PayPal
+2. **Inventory Management** - Add stock tracking to prevent overselling
+3. **User Authentication** - Add proper auth flow with password hashing
+4. **ML-based Recommendations** - Enhance with collaborative filtering
+5. **Multi-turn Tool Use** - Enable agent to invoke tools within reasoning loop
+
+---
+
 ## Testing
 
 Run tests for the conversational agent:
 
 ```bash
 pytest iteration2/
+```
+
+Test vector search functionality:
+
+```bash
+poetry run python iteration3/test_vector_search.py
 ```
