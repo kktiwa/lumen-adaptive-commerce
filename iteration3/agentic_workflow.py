@@ -45,9 +45,8 @@ email_service = EmailService()
 
 # Initialize LLM
 llm = ChatOpenAI(
-    model="gpt-4o-mini",
+    model="o1",
     api_key=settings.openai_api_key,
-    temperature=0.7,
 )
 
 

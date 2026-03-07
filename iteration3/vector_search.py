@@ -1,6 +1,7 @@
 """Vector-based semantic search using ChromaDB and embeddings for products"""
 import chromadb
 from langchain_openai import OpenAIEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from typing import List, Dict, Any, Optional
 import json
 import logging
@@ -23,6 +24,32 @@ PRODUCTS_COLLECTION_NAME = "products"
 # Global collection reference
 _product_collection = None
 
+# Initialize sentence-based text splitter
+# Splits on sentences first, then paragraphs, then words if needed
+_sentence_splitter = RecursiveCharacterTextSplitter(
+    separators=["\n\n", "\n", ". ", "! ", "? ", " ", ""],
+    chunk_size=512,
+    chunk_overlap=50,
+    length_function=len,
+)
+
+
+def _split_text_into_sentences(text: str) -> List[str]:
+    """
+    Split text into sentence-based chunks using langchain_text_splitters.
+    
+    Args:
+        text: Text to split into sentences
+        
+    Returns:
+        List of sentence chunks
+    """
+    if not text or not text.strip():
+        return []
+    
+    chunks = _sentence_splitter.split_text(text)
+    return [chunk.strip() for chunk in chunks if chunk.strip()]
+
 
 def get_or_create_collection():
     """Get or create the products collection in ChromaDB"""
@@ -43,7 +70,7 @@ def get_or_create_collection():
 
 def initialize_product_embeddings(products: List[Dict[str, Any]]) -> None:
     """
-    Initialize ChromaDB with product embeddings.
+    Initialize ChromaDB with product embeddings using sentence-based chunking.
     This should be called once at startup.
     
     Args:
@@ -56,17 +83,23 @@ def initialize_product_embeddings(products: List[Dict[str, Any]]) -> None:
         logger.info(f"Product collection already has {collection.count()} products, skipping re-embedding")
         return
     
-    logger.info(f"Initializing embeddings for {len(products)} products...")
+    logger.info(f"Initializing embeddings for {len(products)} products with sentence-based chunking...")
     
     for product in products:
-        # Create a rich text representation of the product for embedding
-        product_text = _create_product_embedding_text(product)
+        # Get product description and split into sentences
+        description = product.get("description", "")
+        sentence_chunks = _split_text_into_sentences(description) if description else []
         
-        # Add to collection
-        collection.add(
-            ids=[product["id"]],
-            documents=[product_text],
-            metadatas=[{
+        # If no chunks from description, create one from product summary
+        if not sentence_chunks:
+            sentence_chunks = [_create_product_embedding_text(product)]
+        
+        # Add each sentence chunk to the collection
+        for idx, chunk in enumerate(sentence_chunks):
+            chunk_id = f"{product['id']}_chunk_{idx}" if len(sentence_chunks) > 1 else product["id"]
+            
+            # Create metadata with product info and chunk info
+            metadata = {
                 "name": product.get("name", ""),
                 "category": product.get("category", ""),
                 "price": product.get("price", 0),
@@ -75,10 +108,18 @@ def initialize_product_embeddings(products: List[Dict[str, Any]]) -> None:
                 "educational": str(product.get("educational", False)),
                 "eco_friendly": str(product.get("eco_friendly", False)),
                 "features": json.dumps(product.get("features", [])),
-            }],
-        )
+                "product_id": product["id"],
+                "chunk_index": idx,
+                "total_chunks": len(sentence_chunks),
+            }
+            
+            collection.add(
+                ids=[chunk_id],
+                documents=[chunk],
+                metadatas=[metadata],
+            )
     
-    logger.info(f"Loaded {len(products)} products into ChromaDB")
+    logger.info(f"Loaded {len(products)} products with sentence-based chunking into ChromaDB")
 
 
 def _create_product_embedding_text(product: Dict[str, Any]) -> str:
@@ -113,7 +154,7 @@ def semantic_product_search(
     eco_friendly: Optional[bool] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Search for products using semantic similarity.
+    Search for products using semantic similarity with sentence-based chunking.
     
     Args:
         query: Natural language query describing what the user wants
@@ -166,30 +207,36 @@ def semantic_product_search(
         include=["documents", "metadatas", "distances", "embeddings"]
     )
     
-    # Parse results and convert back to product format
-    products = []
+    # Parse results and deduplicate by product_id (since we have multiple chunks per product)
+    product_map = {}
     if results and results["ids"] and len(results["ids"]) > 0:
-        for i, product_id in enumerate(results["ids"][0]):
+        for i, chunk_id in enumerate(results["ids"][0]):
             metadata = results["metadatas"][0][i] if results["metadatas"] else {}
             distance = results["distances"][0][i] if results["distances"] else 0
             
             # Convert distance to similarity score (cosine distance: 0 = most similar)
             similarity_score = 1 - (distance / 2)  # Normalize to 0-1 range
             
-            product = {
-                "id": product_id,
-                "name": metadata.get("name", ""),
-                "category": metadata.get("category", ""),
-                "price": int(metadata.get("price", 0)),
-                "age_range": metadata.get("age_range", ""),
-                "occasion": json.loads(metadata.get("occasion", "[]")),
-                "educational": metadata.get("educational", "False") == "True",
-                "eco_friendly": metadata.get("eco_friendly", "False") == "True",
-                "features": json.loads(metadata.get("features", "[]")),
-                "similarity_score": similarity_score,
-            }
-            products.append(product)
+            # Use product_id from metadata, fallback to chunk_id
+            product_id = metadata.get("product_id", chunk_id.split("_chunk_")[0])
+            
+            # Keep the best scoring chunk for each product
+            if product_id not in product_map or similarity_score > product_map[product_id]["similarity_score"]:
+                product_map[product_id] = {
+                    "id": product_id,
+                    "name": metadata.get("name", ""),
+                    "category": metadata.get("category", ""),
+                    "price": int(metadata.get("price", 0)),
+                    "age_range": metadata.get("age_range", ""),
+                    "occasion": json.loads(metadata.get("occasion", "[]")),
+                    "educational": metadata.get("educational", "False") == "True",
+                    "eco_friendly": metadata.get("eco_friendly", "False") == "True",
+                    "features": json.loads(metadata.get("features", "[]")),
+                    "similarity_score": similarity_score,
+                    "matching_sentence": results["documents"][0][i] if results["documents"] else "",
+                }
     
+    products = list(product_map.values())
     logger.info(f"Semantic search found {len(products)} products matching query: {query}")
     return products
 
