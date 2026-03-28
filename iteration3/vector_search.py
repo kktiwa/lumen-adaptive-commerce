@@ -155,6 +155,7 @@ def semantic_product_search(
 ) -> List[Dict[str, Any]]:
     """
     Search for products using semantic similarity with sentence-based chunking.
+    Implements native similarity search by computing query embeddings directly.
     
     Args:
         query: Natural language query describing what the user wants
@@ -199,9 +200,12 @@ def semantic_product_search(
     elif filters:
         where_filter = filters[0]
     
-    # Query the collection
+    # Compute query embedding natively using OpenAI embeddings
+    query_embedding = embeddings.embed_query(query)
+    
+    # Use similarity_search with pre-computed embedding
     results = collection.query(
-        query_texts=[query],
+        query_embeddings=[query_embedding],
         n_results=top_k,
         where=where_filter,
         include=["documents", "metadatas", "distances", "embeddings"]

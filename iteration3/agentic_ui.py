@@ -87,9 +87,9 @@ def build_ui() -> gr.Blocks:
     
     ui_manager = AgenticShoppingUI()
     
-    with gr.Blocks(title="Adaptive Commerce - Autonomous Shopping Agent", theme=gr.themes.Soft()) as demo:
+    with gr.Blocks(title="Lumen Adaptive Commerce - Autonomous Shopping Agent", theme=gr.themes.Soft()) as demo:
         gr.Markdown("""
-        # 🛍️ Adaptive Commerce - Autonomous Shopping Agent
+        # 🛍️ Lumen Adaptive Commerce - Autonomous Shopping Agent
         
         Chat with our AI shopping agent to find the perfect product and complete your purchase!
         
